@@ -42,13 +42,47 @@ jobs:
             type=sha
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          LABELS: ${{ steps.meta.outputs.labels }}
+        run: |
+          set -e
+
+          TAG_ARGS=()
+          while IFS= read -r line; do
+            [ -n "$line" ] && TAG_ARGS+=(--tag "$line")
+          done <<< "$TAGS"
+
+          LABEL_ARGS=()
+          while IFS= read -r line; do
+            [ -n "$line" ] && LABEL_ARGS+=(--label "$line")
+          done <<< "$LABELS"
+
+          # docker.n8n.io (the base image registry) throttles GitHub Actions'
+          # shared runner IPs with 429 Too Many Requests. This is almost
+          # always transient, so retry the build with backoff instead of
+          # failing the whole job on the first hit.
+          MAX_ATTEMPTS=5
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            echo "::group::Build attempt ${attempt}/${MAX_ATTEMPTS}"
+            if docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --file Dockerfile \
+              --cache-from type=gha \
+              --cache-to type=gha,mode=max \
+              "${TAG_ARGS[@]}" \
+              "${LABEL_ARGS[@]}" \
+              --push .; then
+              echo "::endgroup::"
+              echo "Build succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+              WAIT=$((attempt * 20))
+              echo "Build failed (possible registry rate limit). Retrying in ${WAIT}s..."
+              sleep "$WAIT"
+            fi
+          done
+          echo "Build failed after ${MAX_ATTEMPTS} attempts"
+          exit 1
