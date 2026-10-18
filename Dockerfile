@@ -33,7 +33,9 @@ RUN chmod 755 /entrypoint.sh \
     && mkdir -p /home/container \
     && chown -R node:node /home/container
 
-# N8N_USER_FOLDER = folder yang BERISI .n8n (n8n sendiri yang menambahkan /.n8n)
+# N8N_USER_FOLDER = folder yang BERISI .n8n (n8n sendiri yang menambahkan /.n8n).
+# Nilai UNVERIFIED_PACKAGES/RUNNERS_TASK_TIMEOUT/COMPRESSION_* = bawaan n8n sekarang, ditulis
+# eksplisit supaya perilaku tidak berubah saat n8n menurunkan bawaannya (dan tanpa peringatan).
 ENV HOME=/home/container \
     N8N_USER_FOLDER=/home/container \
     N8N_LISTEN_ADDRESS=0.0.0.0 \
@@ -42,7 +44,10 @@ ENV HOME=/home/container \
     N8N_DIAGNOSTICS_ENABLED=false \
     N8N_VERSION_NOTIFICATIONS_ENABLED=false \
     N8N_TEMPLATES_ENABLED=true \
-    N8N_RUNNERS_ENABLED=true \
+    N8N_UNVERIFIED_PACKAGES_ENABLED=true \
+    N8N_RUNNERS_TASK_TIMEOUT=300 \
+    N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES=2147483648 \
+    N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES=5000 \
     NODE_ENV=production \
     GENERIC_TIMEZONE=Asia/Jakarta \
     TZ=Asia/Jakarta

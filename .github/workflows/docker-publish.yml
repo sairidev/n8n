@@ -97,6 +97,16 @@ jobs:
           sudo test ! -e data/.n8n/.n8n || { echo "folder data bertingkat (.n8n/.n8n)"; exit 1; }
           [ "$code" = 0 ] || { echo "n8n tidak berhenti dengan bersih (exit $code)"; exit 1; }
           docker logs n8n-uji 2>&1 | grep -q 'URL publik' || { echo "banner bahasa Indonesia tidak muncul"; exit 1; }
+          if docker logs n8n-uji 2>&1 | grep -E -- '- (N8N_RUNNERS_ENABLED|WEBHOOK_URL|N8N_UNVERIFIED_PACKAGES_ENABLED|N8N_RUNNERS_TASK_TIMEOUT|N8N_COMPRESSION_NODE_[A-Z_]+) ->'; then
+            echo "masih ada peringatan usang dari variabel yang diatur image"; exit 1
+          fi
+
+      - name: Uji URL publik (N8N_WEBHOOK_URL)
+        run: |
+          IMAGE="${{ steps.image.outputs.name }}:sha-${GITHUB_SHA::7}"
+          out=$(docker run --rm -e WEBHOOK_URL=https://n8n.contoh.id -e SERVER_PORT=8125 "$IMAGE" sh -c 'echo "N8N_WEBHOOK_URL=$N8N_WEBHOOK_URL WEBHOOK_URL=${WEBHOOK_URL:-kosong} HOST=$N8N_HOST PROTO=$N8N_PROTOCOL"' 2>&1)
+          echo "$out"
+          echo "$out" | grep -q 'N8N_WEBHOOK_URL=https://n8n.contoh.id/ WEBHOOK_URL=kosong HOST=n8n.contoh.id PROTO=https' || { echo "pemetaan URL publik salah"; exit 1; }
 
       - name: Uji banner bahasa Inggris
         run: |

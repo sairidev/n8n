@@ -21,9 +21,12 @@ export GENERIC_TIMEZONE="${GENERIC_TIMEZONE:-${TZ:-Asia/Jakarta}}"
 export TZ="${GENERIC_TIMEZONE}"
 
 # URL publik. N8N_HOST dipakai n8n untuk MEMBUAT url (bukan alamat listen), jadi jangan 0.0.0.0.
+# Variabel egg tetap WEBHOOK_URL, tapi n8n baru memakai N8N_WEBHOOK_URL (WEBHOOK_URL sudah usang).
+WEBHOOK_URL="${N8N_WEBHOOK_URL:-${WEBHOOK_URL}}"
+unset N8N_WEBHOOK_URL
 if [ -n "${WEBHOOK_URL}" ]; then
     case "${WEBHOOK_URL}" in */) ;; *) WEBHOOK_URL="${WEBHOOK_URL}/" ;; esac
-    export WEBHOOK_URL
+    export N8N_WEBHOOK_URL="${WEBHOOK_URL}"
     export N8N_EDITOR_BASE_URL="${N8N_EDITOR_BASE_URL:-${WEBHOOK_URL}}"
     host="${WEBHOOK_URL#*://}"; host="${host%%/*}"; host="${host%%:*}"
     export N8N_HOST="${N8N_HOST:-${host}}"
@@ -81,6 +84,9 @@ if [ "${N8N_SECURE_COOKIE}" = "true" ] && [ "${N8N_PROTOCOL}" != "https" ]; then
         '! Cookie aman = true tapi URL publik bukan HTTPS: login lewat http://IP:PORT akan gagal. Ubah ke false.' \
         '! Secure cookie = true but Public URL is not HTTPS: logging in via http://IP:PORT will fail. Set it to false.')"
 fi
+
+# Sudah diteruskan lewat N8N_WEBHOOK_URL; WEBHOOK_URL lama tidak ikut ke n8n (peringatan usang)
+unset WEBHOOK_URL
 
 # 1) explicit command (docker run image sh / n8n ...)
 if [ "$#" -gt 0 ]; then
