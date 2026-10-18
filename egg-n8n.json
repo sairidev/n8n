@@ -1,0 +1,72 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-19T02:00:00+07:00",
+    "name": "n8n",
+    "author": "sairipedia@gmail.com",
+    "description": "n8n - workflow automation (image resmi n8n yang disesuaikan untuk Pterodactyl). Buka http://IP:PORT server setelah status Running, lalu buat akun owner. Data (workflow, credential, database) tersimpan di folder .n8n server.",
+    "features": null,
+    "docker_images": {
+        "n8n (stable)": "ghcr.io/sairidev/n8n:latest"
+    },
+    "file_denylist": [],
+    "startup": "n8n start",
+    "config": {
+        "files": "{}",
+        "startup": "{\n    \"done\": \"Editor is now accessible via\"\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# n8n sudah ada di dalam image Docker; di sini cukup menyiapkan folder data.\nmkdir -p /mnt/server/.n8n\necho \"n8n siap. Nyalakan server lalu buka http://IP:PORT di browser.\"",
+            "container": "debian:bookworm-slim",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "URL publik (opsional)",
+            "description": "Alamat n8n yang dibuka dari luar, mis. https://n8n.domainkamu.com. Dipakai untuk URL webhook & editor. Kosongkan kalau dibuka lewat http://IP:PORT server.",
+            "env_variable": "WEBHOOK_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255|regex:/^https?:\\/\\//",
+            "field_type": "text"
+        },
+        {
+            "name": "Cookie aman (HTTPS)",
+            "description": "true kalau n8n dibuka lewat HTTPS (domain + SSL). Biarkan false kalau dibuka lewat http://IP:PORT, kalau tidak, login akan berputar terus.",
+            "env_variable": "N8N_SECURE_COOKIE",
+            "default_value": "false",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:true,false",
+            "field_type": "text"
+        },
+        {
+            "name": "Di belakang reverse proxy",
+            "description": "1 kalau n8n diakses lewat reverse proxy (Nginx, Cloudflare Tunnel, dll.), 0 kalau langsung.",
+            "env_variable": "N8N_PROXY_HOPS",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|in:0,1",
+            "field_type": "text"
+        },
+        {
+            "name": "Zona waktu",
+            "description": "Zona waktu untuk node Schedule/Cron di workflow.",
+            "env_variable": "GENERIC_TIMEZONE",
+            "default_value": "Asia/Jakarta",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:Asia/Jakarta,Asia/Makassar,Asia/Jayapura,UTC",
+            "field_type": "text"
+        }
+    ]
+}

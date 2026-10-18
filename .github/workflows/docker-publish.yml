@@ -1,14 +1,20 @@
 name: Docker
 
+# Build image n8n-pterodactyl lalu push ke ghcr.io/<pemilik>/n8n, kemudian uji jalan
+# seperti Pterodactyl Wings (user non-root, volume /home/container, STARTUP, SERVER_PORT).
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*.*.*' ]
+    branches: [main]
+    tags: ['v*.*.*']
   workflow_dispatch:
+    inputs:
+      n8n_version:
+        description: 'Versi n8n (tag Docker Hub n8nio/n8n, mis. stable, latest, 2.44.3)'
+        default: 'stable'
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  N8N_VERSION: ${{ github.event.inputs.n8n_version || 'stable' }}
 
 jobs:
   build:
@@ -16,73 +22,68 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Log into registry ${{ env.REGISTRY }}
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
+      - id: image
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
             type=sha
 
-      - name: Build and push Docker image
+      # Semua node panel amd64. Base dari Docker Hub (n8nio/n8n), bukan docker.n8n.io
+      # yang membatasi runner GitHub (429). Percobaan ulang tetap ada untuk jaga-jaga.
+      - name: Build and push
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
           LABELS: ${{ steps.meta.outputs.labels }}
         run: |
           set -e
-
-          TAG_ARGS=()
-          while IFS= read -r line; do
-            [ -n "$line" ] && TAG_ARGS+=(--tag "$line")
-          done <<< "$TAGS"
-
-          LABEL_ARGS=()
-          while IFS= read -r line; do
-            [ -n "$line" ] && LABEL_ARGS+=(--label "$line")
-          done <<< "$LABELS"
-
-          # docker.n8n.io (the base image registry) throttles GitHub Actions'
-          # shared runner IPs with 429 Too Many Requests. This is almost
-          # always transient, so retry the build with backoff instead of
-          # failing the whole job on the first hit.
-          MAX_ATTEMPTS=5
-          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-            echo "::group::Build attempt ${attempt}/${MAX_ATTEMPTS}"
-            if docker buildx build \
-              --platform linux/amd64,linux/arm64 \
-              --file Dockerfile \
-              --cache-from type=gha \
-              --cache-to type=gha,mode=max \
-              "${TAG_ARGS[@]}" \
-              "${LABEL_ARGS[@]}" \
-              --push .; then
-              echo "::endgroup::"
-              echo "Build succeeded on attempt ${attempt}"
+          TAG_ARGS=(); while IFS= read -r l; do [ -n "$l" ] && TAG_ARGS+=(--tag "$l"); done <<< "$TAGS"
+          LABEL_ARGS=(); while IFS= read -r l; do [ -n "$l" ] && LABEL_ARGS+=(--label "$l"); done <<< "$LABELS"
+          for attempt in 1 2 3; do
+            if docker buildx build --platform linux/amd64 \
+                 --build-arg N8N_VERSION="${N8N_VERSION}" \
+                 --cache-from type=gha --cache-to type=gha,mode=max \
+                 "${TAG_ARGS[@]}" "${LABEL_ARGS[@]}" --push .; then
               exit 0
             fi
-            echo "::endgroup::"
-            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
-              WAIT=$((attempt * 20))
-              echo "Build failed (possible registry rate limit). Retrying in ${WAIT}s..."
-              sleep "$WAIT"
-            fi
+            echo "Build gagal, coba lagi dalam $((attempt * 20)) detik..."; sleep $((attempt * 20))
           done
-          echo "Build failed after ${MAX_ATTEMPTS} attempts"
           exit 1
+
+      - name: Uji jalan seperti Wings
+        run: |
+          IMAGE="${{ steps.image.outputs.name }}:sha-${GITHUB_SHA::7}"
+          docker pull -q "$IMAGE"
+          mkdir -p data && sudo chown 988:988 data
+          docker run -d --name n8n-uji --user 988:988 \
+            -v "$PWD/data:/home/container" \
+            -e STARTUP='n8n start' -e SERVER_PORT=8123 -e SERVER_IP=127.0.0.1 -e SERVER_MEMORY=1024 \
+            -e GENERIC_TIMEZONE=Asia/Jakarta -e N8N_SECURE_COOKIE=false \
+            -p 8123:8123 "$IMAGE"
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8123/healthz >/dev/null 2>&1; then ok=1; break; fi
+            sleep 3
+          done
+          echo "::group::Log container"; docker logs n8n-uji 2>&1 | tail -60; echo "::endgroup::"
+          echo "healthz: $(curl -s http://127.0.0.1:8123/healthz)"
+          echo "isi data:"; sudo ls -la data data/.n8n 2>/dev/null | head -20
+          docker stop -t 20 n8n-uji >/dev/null
+          echo "exit setelah stop: $(docker inspect n8n-uji --format '{{.State.ExitCode}}')"
+          [ "$ok" = 1 ] || { echo "n8n tidak menjawab /healthz"; exit 1; }

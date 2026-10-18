@@ -3,53 +3,53 @@
 Image Docker untuk **n8n** (workflow automation tool) yang dibungkus agar
 langsung siap jalan sebagai server di panel **Pterodactyl / Pelican**.
 
-Pendekatannya sama seperti pola `docker/Dockerfile` di 9Router edisi SAIRI:
-image resmi dijadikan base, lalu ditambah lapisan tipis supaya cocok dengan
-cara Wings (daemon Pterodactyl) menjalankan container — bukan build ulang
-aplikasinya dari source.
+Pendekatannya: image resmi n8n dijadikan base, lalu ditambah lapisan tipis supaya
+cocok dengan cara Wings (daemon Pterodactyl) menjalankan container — bukan build
+ulang aplikasinya dari source.
 
-## Kenapa repo ini ada
+## Cara pasang di panel
 
-n8n resmi tidak punya varian image yang didesain untuk jalan di bawah
-Pterodactyl/Pelican: user/uid dinamis dari panel, volume data yang harus
-diarahkan ke `/home/container`, port yang mengikuti alokasi panel
-(`SERVER_PORT`), dan startup command yang di-parse dari variabel
-`{{EGG_VAR}}` ala egg Pterodactyl. Repo ini mengisi celah itu — n8n bisa
-di-deploy sebagai server di panel sama gampangnya seperti egg lain, tanpa
-perlu VPS terpisah atau setup manual di luar panel.
+1. Panel admin → **Nests** → pilih/buat nest → **Import Egg** → `egg-n8n.json`.
+2. Buat server dengan egg **n8n** (disarankan RAM ≥ 1 GB, disk ≥ 2 GB).
+3. Nyalakan. Setelah status **Running**, buka `http://IP:PORT` server lalu buat
+   akun owner n8n.
 
-## Kenapa tidak build n8n dari source
+Image: `ghcr.io/sairidev/n8n:latest`. Kalau package GHCR-nya private, node Wings
+perlu login `ghcr.io` (lihat `docker.registries` di `/etc/pterodactyl/config.yml`).
 
-Source n8n adalah monorepo pnpm yang berat untuk dibuild (perlu
-`pnpm build:docker`) dan punya beberapa native module (`isolated-vm`,
-`sqlite3`, `@confluentinc/kafka-javascript`) yang butuh toolchain C/C++ serta
-waktu compile lama. Tim n8n sendiri sudah menyediakan image resmi
-(`docker.n8n.io/n8nio/n8n`) yang teruji, jadi cara paling stabil dan ringan
-adalah membungkus image tersebut, bukan mengompilasi ulang semuanya.
+### Variabel Startup
+
+| Variabel | Fungsi |
+|---|---|
+| URL publik (`WEBHOOK_URL`) | Alamat n8n dari luar, mis. `https://n8n.domainkamu.com`. Kosong = `http://IP:PORT` server |
+| Cookie aman (`N8N_SECURE_COOKIE`) | `true` hanya kalau dibuka lewat HTTPS. Lewat HTTP biasa harus `false`, kalau tidak login berputar terus |
+| Di belakang reverse proxy (`N8N_PROXY_HOPS`) | `1` kalau lewat Nginx/Cloudflare Tunnel |
+| Zona waktu (`GENERIC_TIMEZONE`) | Untuk node Schedule/Cron |
+
+Port mengikuti alokasi server, dan batas memori Node.js mengikuti RAM server di panel.
 
 ## Bagaimana image ini bekerja
 
-- **Dibangun otomatis di GitHub Actions**, bukan di server panel — jadi
-  server yang baru diinstal tidak perlu compile apa pun, cukup tarik image
-  jadi dari registry.
-- **Base image** tetap image resmi n8n; lapisan tambahan hanya berupa
-  `bash`, `curl`, `tzdata`, pengalihan `HOME`/data ke `/home/container`, dan
-  logika startup ala Pterodactyl.
-- **Data** (workflow, credential, database SQLite, encryption key) disimpan
-  di `/home/container/.n8n`, yaitu volume server yang sudah otomatis
-  disediakan Pterodactyl — jadi aman dari reinstall/update image.
-- **Multi-arch**: image dipublikasikan untuk `linux/amd64` dan
-  `linux/arm64`, jadi jalan baik di panel berbasis x86 maupun ARM.
+- **Dibangun otomatis di GitHub Actions** setiap push ke `main` (hanya `linux/amd64`),
+  lalu diuji jalan seperti di Wings: user non-root, volume `/home/container`,
+  `STARTUP`, port panel, sampai `/healthz` n8n menjawab.
+- **Base image** `n8nio/n8n:stable` dari Docker Hub. `docker.n8n.io` tidak dipakai
+  karena membatasi runner GitHub Actions (429 Too Many Requests). Versi lain bisa
+  dipilih lewat *Run workflow* → `n8n_version`.
+- **Data** (workflow, credential, database SQLite, encryption key) di
+  `/home/container/.n8n` — volume server Pterodactyl, aman dari restart/update image.
+- **`tini` tetap PID 1** seperti image resmi, entrypoint memakai `sh` biasa (tidak
+  bergantung pada bash/apk yang bisa hilang di image n8n versi baru).
 
 ## Isi repo
 
 | File | Fungsi |
 |---|---|
 | `Dockerfile` | Bungkus image resmi n8n agar cocok jalan di bawah user/volume Pterodactyl |
-| `entrypoint.sh` | Banner info + parsing variabel `{{EGG_VAR}}` dari `STARTUP`, lalu jalankan n8n |
-| `egg-n8n.json` | Egg Pterodactyl siap import, mendefinisikan variabel & startup command server |
+| `entrypoint.sh` | Banner info, port & URL publik, batas memori, parsing `{{EGG_VAR}}` dari `STARTUP` |
+| `egg-n8n.json` | Egg Pterodactyl siap import |
 | `docker-compose.yml` | Untuk menjalankan/testing image di luar Pterodactyl |
-| `.github/workflows/docker-publish.yml` | Build multi-arch (amd64+arm64) & push otomatis ke GHCR |
+| `.github/workflows/docker-publish.yml` | Build & push ke GHCR, lalu uji jalan seperti Wings |
 
 ## Lisensi
 

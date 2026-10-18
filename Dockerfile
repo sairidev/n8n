@@ -3,56 +3,58 @@
 # n8n · Pterodactyl edition
 #
 # Tidak build n8n dari source (butuh compiler untuk native module: isolated-vm,
-# sqlite3, kafka-javascript — berat & lama). Sebagai gantinya image resmi n8n
-# dipakai sebagai base, lalu ditambah lapisan tipis agar cocok jalan di bawah
-# Pterodactyl/Pelican Wings: HOME & data dir diarahkan ke /home/container
-# (volume server panel), port mengikuti alokasi panel (SERVER_PORT), dan
-# startup command di-parse dari variabel {{EGG_VAR}} ala Pterodactyl.
+# sqlite3, kafka-javascript — berat & lama). Image resmi n8n dipakai sebagai base,
+# lalu ditambah lapisan tipis agar cocok jalan di bawah Pterodactyl/Pelican Wings:
+# HOME & data dir diarahkan ke /home/container (volume server panel), port mengikuti
+# alokasi panel (SERVER_PORT), dan startup command di-parse dari variabel {{EGG_VAR}}.
+#
+# Base diambil dari Docker Hub (n8nio/n8n), bukan docker.n8n.io: registry milik n8n
+# membatasi IP runner GitHub Actions (429 Too Many Requests). Isinya image yang sama.
 #
 # Build dari root repo ini:
 #   docker build -t n8n-pterodactyl .
+#   docker build --build-arg N8N_VERSION=2.44.3 -t n8n-pterodactyl .
 
-ARG N8N_VERSION=latest
-FROM docker.n8n.io/n8nio/n8n:${N8N_VERSION}
+ARG N8N_VERSION=stable
+FROM n8nio/n8n:${N8N_VERSION}
 
 LABEL org.opencontainers.image.title="n8n-pterodactyl" \
       org.opencontainers.image.description="n8n (workflow automation) dibungkus agar siap jalan di Pterodactyl/Pelican" \
-      org.opencontainers.image.source="https://github.com/n8n-io/n8n" \
       org.opencontainers.image.licenses="Apache-2.0 WITH n8n fair-code"
 
 USER root
 
-# Base image n8n adalah Alpine minimal (tanpa bash). Tambahkan bash, curl,
-# tzdata (untuk GENERIC_TIMEZONE) dan su-exec (jaga-jaga jika perlu drop
-# privilege manual).
-RUN apk add --no-cache bash curl tzdata su-exec shadow \
-    && rm -rf /var/cache/apk/*
+# tzdata kalau package manager masih ada (image n8n versi baru bisa tanpa apk).
+# Tidak wajib: zona waktu tetap jalan lewat ICU bawaan Node.js.
+RUN if command -v apk >/dev/null 2>&1; then apk add --no-cache tzdata || true; fi
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh \
+    && mkdir -p /home/container \
+    && chown -R node:node /home/container
 
 ENV HOME=/home/container \
     N8N_USER_FOLDER=/home/container/.n8n \
-    N8N_HOST=0.0.0.0 \
-    N8N_PROTOCOL=http \
+    N8N_LISTEN_ADDRESS=0.0.0.0 \
     N8N_PORT=5678 \
+    N8N_PROTOCOL=http \
     N8N_DIAGNOSTICS_ENABLED=false \
     N8N_VERSION_NOTIFICATIONS_ENABLED=false \
     N8N_TEMPLATES_ENABLED=true \
     N8N_RUNNERS_ENABLED=true \
     NODE_ENV=production \
-    GENERIC_TIMEZONE=UTC \
-    TZ=UTC
+    GENERIC_TIMEZONE=Asia/Jakarta \
+    TZ=Asia/Jakarta
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh \
-    && mkdir -p /home/container \
-    && chown -R node:node /home/container
-
-# Wings (daemon Pterodactyl) menjalankan container dengan --user sesuai uid/gid
-# yang dikonfigurasi di panel (default 988:988 atau 999:999) dan sudah
-# meng-chown seluruh volume /home/container ke uid tsb sebelum start, jadi
-# USER di sini hanya default untuk `docker run` biasa di luar Pterodactyl.
+# Wings menjalankan container dengan --user sesuai uid/gid panel dan sudah
+# meng-chown volume /home/container sebelum start; USER di sini hanya default
+# untuk `docker run` biasa di luar Pterodactyl.
 USER node
 WORKDIR /home/container
 
 EXPOSE 5678
 
-ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
+# tini tetap PID 1 (seperti image resmi n8n): sinyal stop panel diteruskan dengan
+# benar dan proses anak (task runner) yang selesai tidak jadi zombie.
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["tini", "--", "/bin/sh", "/entrypoint.sh"]

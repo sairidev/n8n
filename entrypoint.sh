@@ -1,83 +1,79 @@
-#!/bin/bash
+#!/bin/sh
 #
-# n8n · Pterodactyl edition entrypoint
+# n8n · Pterodactyl edition entrypoint (POSIX sh, tidak butuh bash)
 #
-# 1. Arahkan HOME & data n8n (.n8n) ke /home/container -> ini volume server
-#    yang disediakan Pterodactyl, jadi workflow/credentials tetap ada saat
-#    reinstall/restart image.
-# 2. Ikuti port yang dialokasikan panel (SERVER_PORT).
-# 3. Parse variabel {{EGG_VAR}} pada STARTUP command (standar semua egg
-#    Pterodactyl) lalu jalankan.
-# 4. Jika dijalankan tanpa Pterodactyl (docker run biasa) -> langsung
-#    `exec n8n start`.
+# 1. Data n8n (.n8n: workflow, credential, database, encryption key) di
+#    /home/container = volume server Pterodactyl, aman saat restart/update image.
+# 2. Port mengikuti alokasi panel (SERVER_PORT), listen di 0.0.0.0.
+# 3. URL publik (webhook & editor) dari WEBHOOK_URL kalau diisi, kalau tidak dari
+#    IP:port alokasi server.
+# 4. Variabel {{EGG_VAR}} pada STARTUP (standar egg Pterodactyl) di-parse lalu dijalankan.
+# 5. Tanpa Pterodactyl (docker run / compose tanpa STARTUP) -> langsung `n8n start`.
 
 cd /home/container 2>/dev/null || cd "${HOME:-/home/node}" || true
 export HOME="${HOME:-/home/container}"
 
 export N8N_USER_FOLDER="${N8N_USER_FOLDER:-/home/container/.n8n}"
 export N8N_PORT="${SERVER_PORT:-${N8N_PORT:-5678}}"
-export N8N_HOST="${N8N_HOST:-0.0.0.0}"
-export N8N_PROTOCOL="${N8N_PROTOCOL:-http}"
-export GENERIC_TIMEZONE="${TZ:-${GENERIC_TIMEZONE:-UTC}}"
+export N8N_LISTEN_ADDRESS="${N8N_LISTEN_ADDRESS:-0.0.0.0}"
+export GENERIC_TIMEZONE="${GENERIC_TIMEZONE:-${TZ:-Asia/Jakarta}}"
 export TZ="${GENERIC_TIMEZONE}"
+
+# URL publik. N8N_HOST dipakai n8n untuk MEMBUAT url (bukan alamat listen), jadi jangan 0.0.0.0.
+if [ -n "${WEBHOOK_URL}" ]; then
+    case "${WEBHOOK_URL}" in */) ;; *) WEBHOOK_URL="${WEBHOOK_URL}/" ;; esac
+    export WEBHOOK_URL
+    export N8N_EDITOR_BASE_URL="${N8N_EDITOR_BASE_URL:-${WEBHOOK_URL}}"
+    host="${WEBHOOK_URL#*://}"; host="${host%%/*}"; host="${host%%:*}"
+    export N8N_HOST="${N8N_HOST:-${host}}"
+    case "${WEBHOOK_URL}" in https://*) export N8N_PROTOCOL="https" ;; esac
+elif [ -n "${SERVER_IP}" ] && [ "${SERVER_IP}" != "0.0.0.0" ]; then
+    export N8N_HOST="${N8N_HOST:-${SERVER_IP}}"
+fi
+
+# Batas memori Node.js mengikuti RAM server di panel (SERVER_MEMORY, MB; 0 = tanpa batas)
+if [ -n "${SERVER_MEMORY}" ] && [ "${SERVER_MEMORY}" -gt 0 ] 2>/dev/null; then
+    heap=$((SERVER_MEMORY * 75 / 100))
+    [ "${heap}" -lt 256 ] && heap=256
+    export NODE_OPTIONS="--max-old-space-size=${heap} ${NODE_OPTIONS:-}"
+fi
 
 mkdir -p "${N8N_USER_FOLDER}" 2>/dev/null
 
-# --- ANSI colors -------------------------------------------------------------
-RESET='\033[0m'; BOLD='\033[1m'
-CYAN='\033[1;36m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'
-BLUE='\033[1;34m'; GRAY='\033[0;90m'
-LINE="${GRAY}$(printf '%.0s─' $(seq 1 60))${RESET}"
+# --- banner ------------------------------------------------------------------
+GREEN='\033[1;32m'; CYAN='\033[1;36m'; GRAY='\033[0;90m'; BOLD='\033[1m'; RESET='\033[0m'
+LINE="${GRAY}------------------------------------------------------------${RESET}"
 
-print_logo() {
-    echo -e "${GREEN}${BOLD}"
-    cat <<'ART'
+printf "${GREEN}${BOLD}"
+cat <<'ART'
  _ __   ___   _ __
 | '_ \ / _ \ | '_ \
 | | | | (_) || | | |
 |_| |_|\___/ |_| |_|
 ART
-    echo -e "${RESET}"
-}
+printf "${RESET}\n"
+printf "%b\n" "$LINE"
+printf "${CYAN}n8n${RESET}          : v%s\n" "$(n8n --version 2>/dev/null || echo '?')"
+printf "${CYAN}Node.js${RESET}      : %s\n" "$(node -v 2>/dev/null || echo '?')"
+printf "${CYAN}Listen${RESET}       : %s:%s\n" "${N8N_LISTEN_ADDRESS}" "${N8N_PORT}"
+printf "${CYAN}URL publik${RESET}   : %s\n" "${WEBHOOK_URL:-${N8N_PROTOCOL:-http}://${N8N_HOST:-localhost}:${N8N_PORT}/}"
+printf "${CYAN}Timezone${RESET}     : %s\n" "${GENERIC_TIMEZONE}"
+printf "${CYAN}Data dir${RESET}     : %s\n" "${N8N_USER_FOLDER}"
+printf "%b\n" "$LINE"
 
-show_banner() {
-    local node_v n8n_v
-    node_v=$(node -v 2>/dev/null || echo "Not Installed")
-    n8n_v=$(n8n --version 2>/dev/null || echo "Unknown")
-
-    [ -t 1 ] && clear
-    print_logo
-    echo -e "$LINE"
-    echo -e "${CYAN}n8n${RESET}          : v${n8n_v}"
-    echo -e "${CYAN}Node.js${RESET}      : ${node_v}"
-    echo -e "${CYAN}Host:Port${RESET}    : ${N8N_HOST}:${N8N_PORT}"
-    echo -e "${CYAN}Protocol${RESET}     : ${N8N_PROTOCOL}"
-    echo -e "${CYAN}Timezone${RESET}     : ${GENERIC_TIMEZONE}"
-    echo -e "${CYAN}Data dir${RESET}     : ${N8N_USER_FOLDER}"
-    if [ -n "${WEBHOOK_URL}" ]; then
-        echo -e "${CYAN}Webhook URL${RESET} : ${WEBHOOK_URL}"
-    fi
-    echo -e "$LINE"
-}
-
-show_banner
-
-# 1) explicit command (docker run image bash / sh)
+# 1) explicit command (docker run image sh / n8n ...)
 if [ "$#" -gt 0 ]; then
     exec "$@"
 fi
 
-# 2) Pterodactyl / Pelican: panel mengirim startup command lewat $STARTUP,
-#    dengan placeholder {{VAR}} yang perlu diubah jadi ${VAR} lalu di-expand.
+# 2) Pterodactyl / Pelican: startup command lewat $STARTUP, {{VAR}} -> ${VAR}
 if [ -n "${STARTUP}" ]; then
-    MODIFIED_STARTUP=$(echo "${STARTUP}" | sed -e 's/{{/${/g' -e 's/}}/}/g')
-    PARSED_STARTUP=$(eval echo "${MODIFIED_STARTUP}")
-    echo -e "${GREEN}${BOLD}Menjalankan:${RESET} ${PARSED_STARTUP}"
-    echo -e "$LINE"
-    # shellcheck disable=SC2086
-    exec env ${PARSED_STARTUP}
+    MODIFIED_STARTUP=$(printf '%s' "${STARTUP}" | sed -e 's/{{/${/g' -e 's/}}/}/g')
+    printf "${GREEN}${BOLD}Menjalankan:${RESET} %s\n" "$(eval "printf '%s' \"${MODIFIED_STARTUP}\"")"
+    printf "%b\n" "$LINE"
+    eval "exec ${MODIFIED_STARTUP}"
 fi
 
 # 3) plain docker (docker run / docker-compose tanpa STARTUP): langsung start
-echo -e "${GREEN}${BOLD}Menjalankan n8n (mode standalone)...${RESET}"
+printf "${GREEN}${BOLD}Menjalankan n8n (mode standalone)...${RESET}\n"
 exec n8n start
