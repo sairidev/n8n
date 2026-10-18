@@ -76,14 +76,23 @@ jobs:
             -e STARTUP='n8n start' -e SERVER_PORT=8123 -e SERVER_IP=127.0.0.1 -e SERVER_MEMORY=1024 \
             -e GENERIC_TIMEZONE=Asia/Jakarta -e N8N_SECURE_COOKIE=false \
             -p 8123:8123 "$IMAGE"
-          ok=0
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8123/healthz >/dev/null 2>&1; then ok=1; break; fi
+          # Tunggu teks "done" egg (status Running di panel), bukan sekadar /healthz:
+          # /healthz sudah menjawab saat migrasi database masih berjalan.
+          ready=0
+          for i in $(seq 1 100); do
+            if docker logs n8n-uji 2>&1 | grep -q 'Editor is now accessible via'; then ready=1; break; fi
             sleep 3
           done
-          echo "::group::Log container"; docker logs n8n-uji 2>&1 | tail -60; echo "::endgroup::"
+          echo "::group::Log awal (banner)"; docker logs n8n-uji 2>&1 | head -16; echo "::endgroup::"
+          echo "done-string: $ready"
           echo "healthz: $(curl -s http://127.0.0.1:8123/healthz)"
-          echo "isi data:"; sudo ls -la data data/.n8n 2>/dev/null | head -20
-          docker stop -t 20 n8n-uji >/dev/null
-          echo "exit setelah stop: $(docker inspect n8n-uji --format '{{.State.ExitCode}}')"
-          [ "$ok" = 1 ] || { echo "n8n tidak menjawab /healthz"; exit 1; }
+          echo "halaman editor: HTTP $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/)"
+          docker stop -t 30 n8n-uji >/dev/null
+          code=$(docker inspect n8n-uji --format '{{.State.ExitCode}}')
+          echo "::group::Log akhir"; docker logs n8n-uji 2>&1 | tail -15; echo "::endgroup::"
+          echo "exit setelah stop: $code"
+          echo "isi data:"; sudo ls -la data/.n8n | head -20
+          [ "$ready" = 1 ] || { echo "n8n tidak sampai 'Editor is now accessible'"; exit 1; }
+          sudo test -f data/.n8n/database.sqlite || { echo "database tidak di /home/container/.n8n"; exit 1; }
+          sudo test ! -e data/.n8n/.n8n || { echo "folder data bertingkat (.n8n/.n8n)"; exit 1; }
+          [ "$code" = 0 ] || { echo "n8n tidak berhenti dengan bersih (exit $code)"; exit 1; }

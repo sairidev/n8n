@@ -13,7 +13,8 @@
 cd /home/container 2>/dev/null || cd "${HOME:-/home/node}" || true
 export HOME="${HOME:-/home/container}"
 
-export N8N_USER_FOLDER="${N8N_USER_FOLDER:-/home/container/.n8n}"
+# Folder yang BERISI .n8n (n8n menambahkan /.n8n sendiri) -> data di /home/container/.n8n
+export N8N_USER_FOLDER="${N8N_USER_FOLDER:-/home/container}"
 export N8N_PORT="${SERVER_PORT:-${N8N_PORT:-5678}}"
 export N8N_LISTEN_ADDRESS="${N8N_LISTEN_ADDRESS:-0.0.0.0}"
 export GENERIC_TIMEZONE="${GENERIC_TIMEZONE:-${TZ:-Asia/Jakarta}}"
@@ -38,7 +39,7 @@ if [ -n "${SERVER_MEMORY}" ] && [ "${SERVER_MEMORY}" -gt 0 ] 2>/dev/null; then
     export NODE_OPTIONS="--max-old-space-size=${heap} ${NODE_OPTIONS:-}"
 fi
 
-mkdir -p "${N8N_USER_FOLDER}" 2>/dev/null
+mkdir -p "${N8N_USER_FOLDER}/.n8n" 2>/dev/null
 
 # --- banner ------------------------------------------------------------------
 GREEN='\033[1;32m'; CYAN='\033[1;36m'; GRAY='\033[0;90m'; BOLD='\033[1m'; RESET='\033[0m'
@@ -58,7 +59,7 @@ printf "${CYAN}Node.js${RESET}      : %s\n" "$(node -v 2>/dev/null || echo '?')"
 printf "${CYAN}Listen${RESET}       : %s:%s\n" "${N8N_LISTEN_ADDRESS}" "${N8N_PORT}"
 printf "${CYAN}URL publik${RESET}   : %s\n" "${WEBHOOK_URL:-${N8N_PROTOCOL:-http}://${N8N_HOST:-localhost}:${N8N_PORT}/}"
 printf "${CYAN}Timezone${RESET}     : %s\n" "${GENERIC_TIMEZONE}"
-printf "${CYAN}Data dir${RESET}     : %s\n" "${N8N_USER_FOLDER}"
+printf "${CYAN}Data dir${RESET}     : %s/.n8n\n" "${N8N_USER_FOLDER}"
 printf "%b\n" "$LINE"
 
 # 1) explicit command (docker run image sh / n8n ...)

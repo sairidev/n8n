@@ -33,8 +33,9 @@ RUN chmod 755 /entrypoint.sh \
     && mkdir -p /home/container \
     && chown -R node:node /home/container
 
+# N8N_USER_FOLDER = folder yang BERISI .n8n (n8n sendiri yang menambahkan /.n8n)
 ENV HOME=/home/container \
-    N8N_USER_FOLDER=/home/container/.n8n \
+    N8N_USER_FOLDER=/home/container \
     N8N_LISTEN_ADDRESS=0.0.0.0 \
     N8N_PORT=5678 \
     N8N_PROTOCOL=http \
