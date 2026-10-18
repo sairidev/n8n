@@ -28,6 +28,11 @@ USER root
 # Tidak wajib: zona waktu tetap jalan lewat ICU bawaan Node.js.
 RUN if command -v apk >/dev/null 2>&1; then apk add --no-cache tzdata || true; fi
 
+# cloudflared (binary statis) untuk HTTPS tanpa domain/akses root node: Telegram & layanan
+# lain hanya mau mengirim webhook ke https://. Dipakai kalau HTTPS_TUNNEL=1 atau ada token.
+ARG CLOUDFLARED_VERSION=2026.9.3
+ADD --chmod=755 https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64 /usr/local/bin/cloudflared
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh \
     && mkdir -p /home/container \

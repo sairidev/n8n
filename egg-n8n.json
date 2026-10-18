@@ -49,6 +49,26 @@
             "field_type": "text"
         },
         {
+            "name": "HTTPS otomatis (Cloudflare Tunnel)",
+            "description": "1 = n8n dapat alamat https://xxx.trycloudflare.com gratis tanpa domain, supaya trigger Telegram & webhook lain bisa aktif. Alamatnya berubah tiap restart (webhook didaftarkan ulang otomatis oleh n8n). Diabaikan kalau URL publik sudah https://.",
+            "env_variable": "HTTPS_TUNNEL",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:0,1",
+            "field_type": "text"
+        },
+        {
+            "name": "Token Cloudflare Tunnel (opsional)",
+            "description": "Untuk domain sendiri yang tetap: buat tunnel di Cloudflare Zero Trust, arahkan Public Hostname ke http://localhost:PORT server ini, tempel tokennya di sini, lalu isi URL publik dengan https://domain itu.",
+            "env_variable": "CLOUDFLARE_TUNNEL_TOKEN",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:2048|regex:/^[A-Za-z0-9+\\/=_-]+$/",
+            "field_type": "text"
+        },
+        {
             "name": "Cookie aman (HTTPS)",
             "description": "true kalau n8n dibuka lewat HTTPS (domain + SSL). Biarkan false kalau dibuka lewat http://IP:PORT, kalau tidak, login akan berputar terus.",
             "env_variable": "N8N_SECURE_COOKIE",

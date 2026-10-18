@@ -23,6 +23,8 @@ perlu login `ghcr.io` (lihat `docker.registries` di `/etc/pterodactyl/config.yml
 |---|---|
 | Bahasa console (`CONSOLE_LANGUAGE`) | `id` / `en` untuk banner, pesan, dan peringatan di console. Editor n8n tetap bahasa Inggris (n8n resmi hanya menyediakan `en`) |
 | URL publik (`WEBHOOK_URL`) | Alamat n8n dari luar, mis. `https://n8n.domainkamu.com`. Kosong = `http://IP:PORT` server |
+| HTTPS otomatis (`HTTPS_TUNNEL`) | `1` = alamat `https://xxx.trycloudflare.com` gratis lewat Cloudflare Tunnel, tanpa domain. Berubah tiap restart; n8n mendaftarkan ulang webhook trigger (Telegram dll.) sendiri |
+| Token Cloudflare Tunnel (`CLOUDFLARE_TUNNEL_TOKEN`) | Domain sendiri yang tetap: Public Hostname tunnel → `http://localhost:PORT`, lalu isi URL publik dengan domain itu |
 | Cookie aman (`N8N_SECURE_COOKIE`) | `true` hanya kalau dibuka lewat HTTPS. Lewat HTTP biasa harus `false`, kalau tidak login berputar terus |
 | Di belakang reverse proxy (`N8N_PROXY_HOPS`) | `1` kalau lewat Nginx/Cloudflare Tunnel |
 | Zona waktu (`GENERIC_TIMEZONE`) | Untuk node Schedule/Cron |

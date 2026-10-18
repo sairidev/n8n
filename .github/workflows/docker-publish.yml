@@ -113,6 +113,31 @@ jobs:
           echo "$out" | grep -Eq 'HOST=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || { echo "IP publik tidak terdeteksi"; exit 1; }
           echo "$out" | grep -q 'URL publik.* : http://[0-9]' || { echo "banner masih localhost"; exit 1; }
 
+      - name: Uji HTTPS otomatis (Cloudflare Tunnel)
+        run: |
+          IMAGE="${{ steps.image.outputs.name }}:sha-${GITHUB_SHA::7}"
+          mkdir -p data2 && sudo chown 988:988 data2
+          docker run -d --name n8n-tunnel --user 988:988 -v "$PWD/data2:/home/container" \
+            -e STARTUP='n8n start' -e SERVER_PORT=8127 -e SERVER_IP=0.0.0.0 -e SERVER_MEMORY=1024 \
+            -e HTTPS_TUNNEL=1 -e N8N_SECURE_COOKIE=false "$IMAGE"
+          ready=0
+          for i in $(seq 1 100); do
+            if docker logs n8n-tunnel 2>&1 | grep -q 'Editor is now accessible via'; then ready=1; break; fi
+            sleep 3
+          done
+          docker logs n8n-tunnel 2>&1 | head -22
+          url=$(docker logs n8n-tunnel 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | head -n 1)
+          echo "url tunnel: ${url:-tidak ada}"
+          [ "$ready" = 1 ] && [ -n "$url" ] || { echo "tunnel/n8n tidak siap"; docker exec n8n-tunnel tail -20 /tmp/cloudflared.log; exit 1; }
+          ok=0
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 10 "$url/healthz" | grep -q '"ok"'; then ok=1; break; fi
+            sleep 3
+          done
+          docker stop -t 30 n8n-tunnel >/dev/null
+          [ "$ok" = 1 ] || { echo "n8n tidak bisa dibuka lewat $url"; exit 1; }
+          echo "HTTPS lewat tunnel OK"
+
       - name: Uji banner bahasa Inggris
         run: |
           IMAGE="${{ steps.image.outputs.name }}:sha-${GITHUB_SHA::7}"
