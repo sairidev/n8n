@@ -96,3 +96,12 @@ jobs:
           sudo test -f data/.n8n/database.sqlite || { echo "database tidak di /home/container/.n8n"; exit 1; }
           sudo test ! -e data/.n8n/.n8n || { echo "folder data bertingkat (.n8n/.n8n)"; exit 1; }
           [ "$code" = 0 ] || { echo "n8n tidak berhenti dengan bersih (exit $code)"; exit 1; }
+          docker logs n8n-uji 2>&1 | grep -q 'URL publik' || { echo "banner bahasa Indonesia tidak muncul"; exit 1; }
+
+      - name: Uji banner bahasa Inggris
+        run: |
+          IMAGE="${{ steps.image.outputs.name }}:sha-${GITHUB_SHA::7}"
+          out=$(docker run --rm -e CONSOLE_LANGUAGE=en -e SERVER_PORT=8124 -e N8N_SECURE_COOKIE=true "$IMAGE" true 2>&1)
+          echo "$out"
+          echo "$out" | grep -q 'Public URL' || { echo "banner English tidak muncul"; exit 1; }
+          echo "$out" | grep -q 'Secure cookie = true' || { echo "peringatan cookie tidak muncul"; exit 1; }

@@ -21,6 +21,7 @@ perlu login `ghcr.io` (lihat `docker.registries` di `/etc/pterodactyl/config.yml
 
 | Variabel | Fungsi |
 |---|---|
+| Bahasa console (`CONSOLE_LANGUAGE`) | `id` / `en` untuk banner, pesan, dan peringatan di console. Editor n8n tetap bahasa Inggris (n8n resmi hanya menyediakan `en`) |
 | URL publik (`WEBHOOK_URL`) | Alamat n8n dari luar, mis. `https://n8n.domainkamu.com`. Kosong = `http://IP:PORT` server |
 | Cookie aman (`N8N_SECURE_COOKIE`) | `true` hanya kalau dibuka lewat HTTPS. Lewat HTTP biasa harus `false`, kalau tidak login berputar terus |
 | Di belakang reverse proxy (`N8N_PROXY_HOPS`) | `1` kalau lewat Nginx/Cloudflare Tunnel |

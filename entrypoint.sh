@@ -41,8 +41,15 @@ fi
 
 mkdir -p "${N8N_USER_FOLDER}/.n8n" 2>/dev/null
 
+# Bahasa pesan console image ini (bukan tampilan editor n8n): id (bawaan) / en
+case "${CONSOLE_LANGUAGE:-id}" in
+    en*|EN*) LANG_ID=0 ;;
+    *) LANG_ID=1 ;;
+esac
+t() { if [ "${LANG_ID}" = 1 ]; then printf '%s' "$1"; else printf '%s' "$2"; fi; }
+
 # --- banner ------------------------------------------------------------------
-GREEN='\033[1;32m'; CYAN='\033[1;36m'; GRAY='\033[0;90m'; BOLD='\033[1m'; RESET='\033[0m'
+GREEN='\033[1;32m'; CYAN='\033[1;36m'; YELLOW='\033[1;33m'; GRAY='\033[0;90m'; BOLD='\033[1m'; RESET='\033[0m'
 LINE="${GRAY}------------------------------------------------------------${RESET}"
 
 printf "${GREEN}${BOLD}"
@@ -57,10 +64,23 @@ printf "%b\n" "$LINE"
 printf "${CYAN}n8n${RESET}          : v%s\n" "$(n8n --version 2>/dev/null || echo '?')"
 printf "${CYAN}Node.js${RESET}      : %s\n" "$(node -v 2>/dev/null || echo '?')"
 printf "${CYAN}Listen${RESET}       : %s:%s\n" "${N8N_LISTEN_ADDRESS}" "${N8N_PORT}"
-printf "${CYAN}URL publik${RESET}   : %s\n" "${WEBHOOK_URL:-${N8N_PROTOCOL:-http}://${N8N_HOST:-localhost}:${N8N_PORT}/}"
-printf "${CYAN}Timezone${RESET}     : %s\n" "${GENERIC_TIMEZONE}"
-printf "${CYAN}Data dir${RESET}     : %s/.n8n\n" "${N8N_USER_FOLDER}"
+printf "${CYAN}%-12s${RESET} : %s\n" "$(t 'URL publik' 'Public URL')" "${WEBHOOK_URL:-${N8N_PROTOCOL:-http}://${N8N_HOST:-localhost}:${N8N_PORT}/}"
+printf "${CYAN}%-12s${RESET} : %s\n" "$(t 'Zona waktu' 'Timezone')" "${GENERIC_TIMEZONE}"
+printf "${CYAN}%-12s${RESET} : %s/.n8n\n" "$(t 'Folder data' 'Data dir')" "${N8N_USER_FOLDER}"
 printf "%b\n" "$LINE"
+
+# Peringatan konfigurasi yang sering bikin bingung
+case "${WEBHOOK_URL}" in
+    https://*) ;;
+    *) printf "${YELLOW}%s${RESET}\n" "$(t \
+        '! URL publik bukan HTTPS: trigger Telegram & webhook layanan lain tidak bisa aktif. Isi URL publik dengan https://domain.' \
+        '! Public URL is not HTTPS: Telegram and other service webhooks cannot be activated. Set Public URL to https://domain.')" ;;
+esac
+if [ "${N8N_SECURE_COOKIE}" = "true" ] && [ "${N8N_PROTOCOL}" != "https" ]; then
+    printf "${YELLOW}%s${RESET}\n" "$(t \
+        '! Cookie aman = true tapi URL publik bukan HTTPS: login lewat http://IP:PORT akan gagal. Ubah ke false.' \
+        '! Secure cookie = true but Public URL is not HTTPS: logging in via http://IP:PORT will fail. Set it to false.')"
+fi
 
 # 1) explicit command (docker run image sh / n8n ...)
 if [ "$#" -gt 0 ]; then
@@ -70,11 +90,11 @@ fi
 # 2) Pterodactyl / Pelican: startup command lewat $STARTUP, {{VAR}} -> ${VAR}
 if [ -n "${STARTUP}" ]; then
     MODIFIED_STARTUP=$(printf '%s' "${STARTUP}" | sed -e 's/{{/${/g' -e 's/}}/}/g')
-    printf "${GREEN}${BOLD}Menjalankan:${RESET} %s\n" "$(eval "printf '%s' \"${MODIFIED_STARTUP}\"")"
+    printf "${GREEN}${BOLD}%s${RESET} %s\n" "$(t 'Menjalankan:' 'Running:')" "$(eval "printf '%s' \"${MODIFIED_STARTUP}\"")"
     printf "%b\n" "$LINE"
     eval "exec ${MODIFIED_STARTUP}"
 fi
 
 # 3) plain docker (docker run / docker-compose tanpa STARTUP): langsung start
-printf "${GREEN}${BOLD}Menjalankan n8n (mode standalone)...${RESET}\n"
+printf "${GREEN}${BOLD}%s${RESET}\n" "$(t 'Menjalankan n8n (mode standalone)...' 'Starting n8n (standalone mode)...')"
 exec n8n start

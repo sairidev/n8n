@@ -29,6 +29,16 @@
     },
     "variables": [
         {
+            "name": "Bahasa console / Console language",
+            "description": "id = Bahasa Indonesia, en = English. Untuk pesan & peringatan di console server ini. Tampilan editor n8n tetap bahasa Inggris (n8n resmi hanya menyediakan English). / For this server's console messages; the n8n editor itself is English only.",
+            "env_variable": "CONSOLE_LANGUAGE",
+            "default_value": "id",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:id,en",
+            "field_type": "text"
+        },
+        {
             "name": "URL publik (opsional)",
             "description": "Alamat n8n yang dibuka dari luar, mis. https://n8n.domainkamu.com. Dipakai untuk URL webhook & editor. Kosongkan kalau dibuka lewat http://IP:PORT server.",
             "env_variable": "WEBHOOK_URL",
