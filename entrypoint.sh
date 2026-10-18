@@ -33,6 +33,10 @@ if [ -n "${WEBHOOK_URL}" ]; then
     case "${WEBHOOK_URL}" in https://*) export N8N_PROTOCOL="https" ;; esac
 elif [ -n "${SERVER_IP}" ] && [ "${SERVER_IP}" != "0.0.0.0" ]; then
     export N8N_HOST="${N8N_HOST:-${SERVER_IP}}"
+elif [ -z "${N8N_HOST}" ]; then
+    # Alokasi 0.0.0.0: cari IP publik node (maks 3 detik), kalau gagal n8n pakai localhost
+    ip=$(node -e "fetch('https://api.ipify.org',{signal:AbortSignal.timeout(3000)}).then(r=>r.text()).then(t=>{t=t.trim();if(/^[0-9.]+$/.test(t))process.stdout.write(t)}).catch(()=>{})" 2>/dev/null)
+    [ -n "${ip}" ] && export N8N_HOST="${ip}"
 fi
 
 # Batas memori Node.js mengikuti RAM server di panel (SERVER_MEMORY, MB; 0 = tanpa batas)

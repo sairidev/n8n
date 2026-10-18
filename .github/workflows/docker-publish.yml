@@ -107,6 +107,11 @@ jobs:
           out=$(docker run --rm -e WEBHOOK_URL=https://n8n.contoh.id -e SERVER_PORT=8125 "$IMAGE" sh -c 'echo "N8N_WEBHOOK_URL=$N8N_WEBHOOK_URL WEBHOOK_URL=${WEBHOOK_URL:-kosong} HOST=$N8N_HOST PROTO=$N8N_PROTOCOL"' 2>&1)
           echo "$out"
           echo "$out" | grep -q 'N8N_WEBHOOK_URL=https://n8n.contoh.id/ WEBHOOK_URL=kosong HOST=n8n.contoh.id PROTO=https' || { echo "pemetaan URL publik salah"; exit 1; }
+          # Alokasi 0.0.0.0 tanpa URL publik -> N8N_HOST = IP publik, bukan localhost
+          out=$(docker run --rm -e SERVER_IP=0.0.0.0 -e SERVER_PORT=8126 "$IMAGE" sh -c 'echo "HOST=$N8N_HOST"' 2>&1)
+          echo "$out"
+          echo "$out" | grep -Eq 'HOST=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || { echo "IP publik tidak terdeteksi"; exit 1; }
+          echo "$out" | grep -q 'URL publik   : http://[0-9]' || { echo "banner masih localhost"; exit 1; }
 
       - name: Uji banner bahasa Inggris
         run: |
