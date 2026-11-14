@@ -92,8 +92,10 @@ jobs:
           for i in $(seq 1 40); do curl -fsS $B/evo/ >/tmp/evo.json 2>/dev/null && break; sleep 3; done
           echo "evolution: $(cat /tmp/evo.json)"; grep -q '"version"' /tmp/evo.json
           code=$(curl -s -o /dev/null -w '%{http_code}' $B/evo); echo "/evo -> HTTP $code (redirect)"; [ "$code" = 308 ]
-          curl -fsS $B/manager > /tmp/manager.html; aset=$(grep -o '/assets/index-[A-Za-z0-9_-]*\.js' /tmp/manager.html | head -n 1)
-          echo "manager: aset $aset"; [ -n "$aset" ]
+          # /manager dialihkan Express ke /manager/ (browser mengikuti sendiri)
+          echo "manager: $(curl -sSL -o /tmp/manager.html -w '%{http_code} -> %{url_effective}' $B/manager)"
+          aset=$(grep -o '/assets/index-[A-Za-z0-9_-]*\.js' /tmp/manager.html | head -n 1)
+          echo "manager: aset $aset"; [ -n "$aset" ] || { head -c 600 /tmp/manager.html; exit 1; }
           ct=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$B$aset"); echo "aset manager: $ct"; echo "$ct" | grep -q '^200 .*javascript'
           # aset n8n tetap dilayani n8n (bukan 404 dari manager Evolution)
           aset_n8n=$(curl -fsS $B/ | grep -o '/assets/[A-Za-z0-9_./-]*\.js' | head -n 1); echo "aset n8n: $aset_n8n"
@@ -144,8 +146,9 @@ jobs:
           docker logs uji2 2>&1 | grep -q 'Credentials'
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8131/ >/tmp/evo2.json 2>/dev/null && break; sleep 3; done
           echo "evolution port kedua: $(cat /tmp/evo2.json)"; grep -q '"version"' /tmp/evo2.json
-          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8131/manager)" = 200 ]
-          aset=$(curl -fsS http://127.0.0.1:8131/manager | grep -o '/assets/index-[A-Za-z0-9_-]*\.js' | head -n 1)
+          [ "$(curl -sL -o /dev/null -w '%{http_code}' http://127.0.0.1:8131/manager)" = 200 ]
+          aset=$(curl -fsSL http://127.0.0.1:8131/manager | grep -o '/assets/index-[A-Za-z0-9_-]*\.js' | head -n 1)
+          echo "manager port kedua: aset $aset"; [ -n "$aset" ]
           [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8131$aset")" = 200 ]
           # Postgres dari luar container: tanpa sandi ditolak, dengan sandi diterima
           sandi=$(docker exec uji2 sh -c '. /home/container/.paket/rahasia.env; printf %s "$PG_SUPER_PASSWORD"')
