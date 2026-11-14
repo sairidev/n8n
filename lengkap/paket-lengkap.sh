@@ -264,8 +264,9 @@ trap 'berhenti; exit 0' INT TERM
 # ------------------------------------------------------------------ Evolution API
 EVO="$H/evolution"; EVO_LOG="$EVO/evolution.log"
 mkdir -p "$EVO/instances" "$EVO/store"
-# Evolution membaca manager/public dari folder kerjanya; programnya sendiri di /opt/evolution (hanya-baca).
-for d in manager public views; do
+# Evolution membaca manager/, public/, views/ dan ./package.json (versi) dari folder kerjanya;
+# programnya sendiri di /opt/evolution (hanya-baca), jadi folder kerja berisi tautan ke sana.
+for d in manager public views package.json; do
     if [ -e "/opt/evolution/$d" ] && { [ -L "$EVO/$d" ] || [ ! -e "$EVO/$d" ]; }; then ln -sfn "/opt/evolution/$d" "$EVO/$d"; fi
 done
 putar_log "$EVO_LOG"
