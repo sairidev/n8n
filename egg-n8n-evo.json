@@ -1,0 +1,142 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-11-15T12:00:00+07:00",
+    "name": "n8n + Evolution API + Postgres",
+    "author": "sairipedia@gmail.com",
+    "description": "Paket lengkap dalam satu server: n8n (otomasi workflow), Evolution API (WhatsApp) dan PostgreSQL 17, sudah tersambung satu sama lain. Setelah status Running: n8n di http://IP:PORT, Evolution API di http://IP:PORT/evo, manager untuk scan QR WhatsApp di http://IP:PORT/manager. API key Evolution dan akun Postgres ada di berkas kredensial.txt. RAM minimal 1 GB, disarankan 2 GB.",
+    "features": null,
+    "docker_images": {
+        "n8n + Evolution API + Postgres": "ghcr.io/sairidev/n8n:evo"
+    },
+    "file_denylist": [],
+    "startup": "paket-lengkap",
+    "config": {
+        "files": "{}",
+        "startup": "{\n    \"done\": \"Editor is now accessible via\"\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/ash\n# Program (n8n, Evolution API, PostgreSQL) ada di dalam image Docker; di sini cukup menyiapkan folder data.\nmkdir -p /mnt/server/.n8n /mnt/server/evolution /mnt/server/postgres\necho \"Paket siap. Nyalakan server: n8n di http://IP:PORT, Evolution API di /evo, manager di /manager.\"",
+            "container": "alpine:3.24",
+            "entrypoint": "ash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Bahasa console / Console language",
+            "description": "id = Bahasa Indonesia, en = English. Untuk pesan di console dan isi kredensial.txt. Tampilan editor n8n dan manager Evolution tetap bahasa Inggris.",
+            "env_variable": "CONSOLE_LANGUAGE",
+            "default_value": "id",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:id,en",
+            "field_type": "text"
+        },
+        {
+            "name": "URL publik (opsional)",
+            "description": "Alamat server ini dari luar, mis. https://n8n.domainkamu.com. Dipakai untuk URL webhook n8n dan alamat Evolution API (URL ini + /evo). Kosongkan kalau dibuka lewat http://IP:PORT.",
+            "env_variable": "WEBHOOK_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255|regex:/^https?:\\/\\//",
+            "field_type": "text"
+        },
+        {
+            "name": "HTTPS otomatis (Cloudflare Tunnel)",
+            "description": "1 = dapat alamat https://xxx.trycloudflare.com gratis tanpa domain (untuk n8n dan Evolution sekaligus), supaya webhook Telegram, TikTok, dan layanan lain bisa aktif. Alamatnya berubah tiap restart. Diabaikan kalau URL publik sudah https://.",
+            "env_variable": "HTTPS_TUNNEL",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:0,1",
+            "field_type": "text"
+        },
+        {
+            "name": "Token Cloudflare Tunnel (opsional)",
+            "description": "Untuk domain sendiri yang tetap: buat tunnel di Cloudflare Zero Trust, arahkan Public Hostname ke http://localhost:PORT server ini, tempel tokennya di sini, lalu isi URL publik dengan https://domain itu.",
+            "env_variable": "CLOUDFLARE_TUNNEL_TOKEN",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:2048|regex:/^[A-Za-z0-9+\\/=_-]+$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Cookie aman (HTTPS)",
+            "description": "true kalau n8n dibuka lewat HTTPS (domain + SSL atau tunnel). Biarkan false kalau dibuka lewat http://IP:PORT; kalau tidak, login n8n akan berputar terus.",
+            "env_variable": "N8N_SECURE_COOKIE",
+            "default_value": "false",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:true,false",
+            "field_type": "text"
+        },
+        {
+            "name": "Zona waktu",
+            "description": "Zona waktu untuk node Schedule/Cron n8n dan database.",
+            "env_variable": "GENERIC_TIMEZONE",
+            "default_value": "Asia/Jakarta",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:Asia/Jakarta,Asia/Makassar,Asia/Jayapura,UTC",
+            "field_type": "text"
+        },
+        {
+            "name": "Simpan riwayat eksekusi n8n (jam)",
+            "description": "Riwayat eksekusi workflow yang lebih tua dari ini dihapus otomatis. 336 = 14 hari, 720 = 30 hari.",
+            "env_variable": "EXECUTIONS_DATA_MAX_AGE",
+            "default_value": "336",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:24,8760",
+            "field_type": "text"
+        },
+        {
+            "name": "API key Evolution (opsional)",
+            "description": "API key global Evolution API (huruf/angka, 16-64 karakter). Kosongkan untuk key acak yang dibuat otomatis; lihat di kredensial.txt.",
+            "env_variable": "EVOLUTION_API_KEY",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|regex:/^[A-Za-z0-9]{16,64}$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Port Evolution API (opsional)",
+            "description": "Kalau server punya port tambahan (tab Network), isi nomor port itu supaya Evolution API dan manager-nya bisa dibuka langsung di http://IP:PORT_ITU. Kosong = cukup lewat /evo dan /manager di port utama.",
+            "env_variable": "EVOLUTION_PORT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|integer|between:1024,65535",
+            "field_type": "text"
+        },
+        {
+            "name": "Port PostgreSQL publik (opsional)",
+            "description": "Isi dengan port tambahan dari tab Network untuk membuka database ke luar (aplikasi lain, DBeaver, dll.). Login tetap pakai sandi di kredensial.txt. Kosong = database hanya bisa diakses dari dalam server ini.",
+            "env_variable": "POSTGRES_PORT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|integer|between:1024,65535",
+            "field_type": "text"
+        },
+        {
+            "name": "Simpan pesan WhatsApp di database",
+            "description": "true = pesan masuk/keluar disimpan Evolution di Postgres (dibutuhkan untuk melihat riwayat chat di manager). false = tidak disimpan; lebih hemat disk dan privasi.",
+            "env_variable": "EVOLUTION_SIMPAN_PESAN",
+            "default_value": "true",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:true,false",
+            "field_type": "text"
+        }
+    ]
+}

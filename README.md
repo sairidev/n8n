@@ -31,6 +31,31 @@ perlu login `ghcr.io` (lihat `docker.registries` di `/etc/pterodactyl/config.yml
 
 Port mengikuti alokasi server, dan batas memori Node.js mengikuti RAM server di panel.
 
+## Paket lengkap: n8n + Evolution API + Postgres (`:evo`)
+
+Satu server berisi n8n, Evolution API (WhatsApp) dan PostgreSQL 17 yang sudah saling tersambung
+(`lengkap/`, egg `egg-n8n-evo.json`, image `ghcr.io/sairidev/n8n:evo`, workflow `docker-evo.yml`).
+
+| Alamat | Isi |
+|---|---|
+| `http://IP:PORT/` | Editor n8n |
+| `http://IP:PORT/evo` | Evolution API (awalan `/evo` dibuang sebelum diteruskan) |
+| `http://IP:PORT/manager` | Manager Evolution untuk scan QR; isi Server URL dengan alamat `/evo` di atas |
+| `EVOLUTION_PORT` (opsional) | Port tambahan khusus Evolution API + manager |
+| `POSTGRES_PORT` (opsional) | Port tambahan untuk membuka Postgres ke luar (sandi wajib) |
+
+- Pterodactyl hanya memberi satu container per server, jadi keempatnya (Postgres, Evolution, Caddy, n8n)
+  dijalankan `paket-lengkap.sh` di container yang sama. Stop dari panel mematikan semuanya berurutan
+  dan Postgres berhenti dengan rapi.
+- Program ada di image; data di volume server: `.n8n/`, `postgres/data/`, `evolution/`, `.paket/` (rahasia).
+  API key Evolution dan akun Postgres ditulis ke `kredensial.txt` setiap start.
+- Dari workflow n8n, Evolution bisa dipanggil lewat `http://127.0.0.1:<port dalam>` (lihat `kredensial.txt`)
+  dan Postgres lewat `127.0.0.1`.
+- Pengaturan tambahan: `evolution/tambahan.env` (Evolution) dan `tambahan-n8n.env` (n8n), tidak ditimpa.
+- Image n8n resmi sudah tanpa `apk`, jadi n8n dipasang dari npm di `node:24-alpine` yang sama dengan Evolution.
+- Evolution API: lisensi Apache 2.0 dengan syarat tambahan; logo/hak cipta di manager tidak boleh diubah
+  dan penggunaan Evolution API harus disebutkan (nama paket dan banner sudah menyebutkannya).
+
 ## Bagaimana image ini bekerja
 
 - **Dibangun otomatis di GitHub Actions** setiap push ke `main` (hanya `linux/amd64`),

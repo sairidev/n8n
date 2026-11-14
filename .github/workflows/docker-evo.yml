@@ -1,0 +1,161 @@
+name: Docker (n8n + Evolution API + Postgres)
+
+# Build image paket lengkap (folder lengkap/) lalu push ke ghcr.io/<pemilik>/n8n:evo, kemudian uji jalan
+# seperti Pterodactyl Wings: user non-root tanpa baris passwd, volume /home/container, STARTUP, SERVER_PORT,
+# stop dengan SIGINT (^C egg), start ulang dengan data yang sama, dan mode port kedua Evolution.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lengkap/**'
+      - '.github/workflows/docker-evo.yml'
+  workflow_dispatch:
+    inputs:
+      n8n_version:
+        description: 'Versi n8n (npm), mis. 2.47.7'
+        default: '2.47.7'
+      evolution_version:
+        description: 'Tag Evolution API, mis. 2.3.7'
+        default: '2.3.7'
+
+env:
+  REGISTRY: ghcr.io
+  N8N_VERSION: ${{ github.event.inputs.n8n_version || '2.47.7' }}
+  EVOLUTION_VERSION: ${{ github.event.inputs.evolution_version || '2.3.7' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: image
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      # Tag uji dulu (evo-sha-xxxxxxx); :evo baru dipindah setelah semua uji lulus,
+      # supaya server pelanggan tidak pernah menarik image yang gagal uji.
+      - name: Build and push (tag uji)
+        run: |
+          set -e
+          IMAGE="${{ steps.image.outputs.name }}"
+          for attempt in 1 2 3; do
+            if docker buildx build --platform linux/amd64 \
+                 --build-arg N8N_VERSION="${N8N_VERSION}" \
+                 --build-arg EVOLUTION_VERSION="${EVOLUTION_VERSION}" \
+                 --cache-from type=gha,scope=evo --cache-to type=gha,mode=max,scope=evo \
+                 --tag "${IMAGE}:evo-sha-${GITHUB_SHA::7}" --push lengkap; then
+              exit 0
+            fi
+            echo "Build gagal, coba lagi dalam $((attempt * 20)) detik..."; sleep $((attempt * 20))
+          done
+          exit 1
+
+      - name: Uji jalan seperti Wings (start pertama)
+        run: |
+          IMAGE="${{ steps.image.outputs.name }}:evo-sha-${GITHUB_SHA::7}"
+          docker pull -q "$IMAGE"
+          echo "ukuran image: $(docker image inspect "$IMAGE" --format '{{.Size}}' | awk '{printf "%.0f MB", $1/1048576}')"
+          mkdir -p data && sudo chown 988:988 data
+          docker run -d --name uji --user 988:988 -v "$PWD/data:/home/container" \
+            -e STARTUP='paket-lengkap' -e SERVER_PORT=8123 -e SERVER_IP=127.0.0.1 -e SERVER_MEMORY=2048 \
+            -e EVOLUTION_API_KEY=ujiKunciEvolution12345 -e N8N_SECURE_COOKIE=false -e CONSOLE_LANGUAGE=id \
+            -p 8123:8123 "$IMAGE"
+          ready=0
+          for i in $(seq 1 120); do
+            if docker logs uji 2>&1 | grep -q 'Editor is now accessible via'; then ready=1; break; fi
+            if [ "$(docker inspect uji --format '{{.State.Running}}')" != true ]; then break; fi
+            sleep 3
+          done
+          echo "::group::Log console"; docker logs uji 2>&1 | head -80; echo "::endgroup::"
+          [ "$ready" = 1 ] || { echo "n8n tidak sampai 'Editor is now accessible'"; docker exec uji sh -c 'tail -n 30 /home/container/evolution/evolution.log; tail -n 30 /home/container/postgres/postgres.log' || true; exit 1; }
+
+      - name: Uji layanan
+        run: |
+          set -e
+          B=http://127.0.0.1:8123
+          K=ujiKunciEvolution12345
+          echo "n8n healthz: $(curl -fsS $B/healthz)"
+          code=$(curl -s -o /dev/null -w '%{http_code}' $B/); echo "editor n8n: HTTP $code"; [ "$code" = 200 ]
+          # Evolution butuh beberapa detik setelah n8n siap
+          for i in $(seq 1 40); do curl -fsS $B/evo/ >/tmp/evo.json 2>/dev/null && break; sleep 3; done
+          echo "evolution: $(cat /tmp/evo.json)"; grep -q '"version"' /tmp/evo.json
+          code=$(curl -s -o /dev/null -w '%{http_code}' $B/evo); echo "/evo -> HTTP $code (redirect)"; [ "$code" = 308 ]
+          curl -fsS $B/manager > /tmp/manager.html; aset=$(grep -o '/assets/index-[A-Za-z0-9_-]*\.js' /tmp/manager.html | head -n 1)
+          echo "manager: aset $aset"; [ -n "$aset" ]
+          ct=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$B$aset"); echo "aset manager: $ct"; echo "$ct" | grep -q '^200 .*javascript'
+          # aset n8n tetap dilayani n8n (bukan 404 dari manager Evolution)
+          aset_n8n=$(curl -fsS $B/ | grep -o '/assets/[A-Za-z0-9_./-]*\.js' | head -n 1); echo "aset n8n: $aset_n8n"
+          [ -z "$aset_n8n" ] || [ "$(curl -s -o /dev/null -w '%{http_code}' "$B$aset_n8n")" = 200 ]
+          # API Evolution dengan key: buat instance (tersimpan di Postgres)
+          code=$(curl -s -o /tmp/buat.json -w '%{http_code}' -X POST $B/evo/instance/create -H "apikey: $K" -H 'content-type: application/json' \
+            -d '{"instanceName":"uji","integration":"WHATSAPP-BAILEYS","qrcode":false}'); echo "buat instance: HTTP $code $(head -c 300 /tmp/buat.json)"
+          [ "$code" = 201 ] || [ "$code" = 200 ]
+          code=$(curl -s -o /dev/null -w '%{http_code}' $B/evo/instance/fetchInstances -H 'apikey: salah'); echo "key salah: HTTP $code"; [ "$code" = 401 ]
+          curl -fsS $B/evo/instance/fetchInstances -H "apikey: $K" | grep -q '"uji"'
+          # Postgres: database sistem ada, hanya mendengar di 127.0.0.1
+          docker exec uji sh -c 'psql -h /home/container/postgres/run -p "$(grep -o "^port = [0-9]*" /home/container/postgres/data/paket.conf | cut -d" " -f3)" -U postgres -lqt' | cut -d'|' -f1 | tr -d ' ' | grep -E '^(n8n|evolution)$'
+          docker exec uji sh -c 'cat /home/container/postgres/data/paket.conf' | grep -q "listen_addresses = '127.0.0.1'"
+          docker exec uji sh -c 'ls -la /home/container; cat /home/container/kredensial.txt' | sed -E 's/(postgres \/ )[a-f0-9]+/\1***/; s/(API key global *: ).*/\1***/'
+          docker exec uji sh -c 'test "$(stat -c %a /home/container/kredensial.txt)" = 600'
+
+      - name: Uji stop (^C) dan start ulang dengan data yang sama
+        run: |
+          set -e
+          docker kill --signal=SIGINT uji
+          for i in $(seq 1 60); do [ "$(docker inspect uji --format '{{.State.Running}}')" = true ] || break; sleep 2; done
+          code=$(docker inspect uji --format '{{.State.ExitCode}}')
+          echo "::group::Log saat stop"; docker logs uji 2>&1 | tail -15; echo "::endgroup::"
+          echo "exit setelah ^C: $code"; [ "$code" = 0 ]
+          docker logs uji 2>&1 | grep -q 'PostgreSQL berhenti dengan rapi'
+          docker start uji
+          ready=0
+          for i in $(seq 1 100); do
+            if [ "$(docker logs uji 2>&1 | grep -c 'Editor is now accessible via')" -ge 2 ]; then ready=1; break; fi
+            sleep 3
+          done
+          [ "$ready" = 1 ] || { docker logs uji 2>&1 | tail -40; echo "start ulang gagal"; exit 1; }
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8123/evo/instance/fetchInstances -H 'apikey: ujiKunciEvolution12345' >/tmp/ins.json 2>/dev/null && break; sleep 3; done
+          grep -q '"uji"' /tmp/ins.json && echo "instance masih ada setelah restart"
+          docker stop -t 90 uji >/dev/null
+          echo "exit setelah SIGTERM: $(docker inspect uji --format '{{.State.ExitCode}}')"; [ "$(docker inspect uji --format '{{.State.ExitCode}}')" = 0 ]
+
+      - name: Uji port kedua Evolution + Postgres publik + bahasa Inggris
+        run: |
+          set -e
+          IMAGE="${{ steps.image.outputs.name }}:evo-sha-${GITHUB_SHA::7}"
+          mkdir -p data2 && sudo chown 988:988 data2
+          docker run -d --name uji2 --user 988:988 -v "$PWD/data2:/home/container" \
+            -e STARTUP='paket-lengkap' -e SERVER_PORT=8130 -e SERVER_IP=127.0.0.1 -e SERVER_MEMORY=2048 \
+            -e EVOLUTION_PORT=8131 -e POSTGRES_PORT=8132 -e CONSOLE_LANGUAGE=en \
+            -p 8130:8130 -p 8131:8131 -p 8132:8132 "$IMAGE"
+          for i in $(seq 1 120); do docker logs uji2 2>&1 | grep -q 'Editor is now accessible via' && break; sleep 3; done
+          docker logs uji2 2>&1 | grep -q 'Credentials'
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8131/ >/tmp/evo2.json 2>/dev/null && break; sleep 3; done
+          echo "evolution port kedua: $(cat /tmp/evo2.json)"; grep -q '"version"' /tmp/evo2.json
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8131/manager)" = 200 ]
+          aset=$(curl -fsS http://127.0.0.1:8131/manager | grep -o '/assets/index-[A-Za-z0-9_-]*\.js' | head -n 1)
+          [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8131$aset")" = 200 ]
+          # Postgres dari luar container: tanpa sandi ditolak, dengan sandi diterima
+          sandi=$(docker exec uji2 sh -c '. /home/container/.paket/rahasia.env; printf %s "$PG_SUPER_PASSWORD"')
+          if docker run --rm --network host -e PGPASSWORD=salah postgres:17-alpine psql -h 127.0.0.1 -p 8132 -U postgres -c 'select 1' >/dev/null 2>&1; then echo "sandi salah diterima!"; exit 1; fi
+          docker run --rm --network host -e PGPASSWORD="$sandi" postgres:17-alpine psql -h 127.0.0.1 -p 8132 -U postgres -tAc 'select version()'
+          docker stop -t 90 uji2 >/dev/null
+          [ "$(docker inspect uji2 --format '{{.State.ExitCode}}')" = 0 ]
+
+      - name: Pindahkan tag :evo ke image yang lulus uji
+        run: |
+          IMAGE="${{ steps.image.outputs.name }}"
+          docker buildx imagetools create --tag "${IMAGE}:evo" "${IMAGE}:evo-sha-${GITHUB_SHA::7}"
+          echo "ghcr: ${IMAGE}:evo -> evo-sha-${GITHUB_SHA::7}"
