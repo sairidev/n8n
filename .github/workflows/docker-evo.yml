@@ -109,9 +109,11 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' $B/evo/instance/fetchInstances -H 'apikey: salah'); echo "key salah: HTTP $code"; [ "$code" = 401 ]
           curl -fsS $B/evo/instance/fetchInstances -H "apikey: $K" | grep -q '"uji"'
           # Postgres: database sistem ada, hanya mendengar di 127.0.0.1
-          docker exec uji sh -c 'psql -h /home/container/postgres/run -p "$(grep -o "^port = [0-9]*" /home/container/postgres/data/paket.conf | cut -d" " -f3)" -U postgres -lqt' | cut -d'|' -f1 | tr -d ' ' | grep -E '^(n8n|evolution)$'
+          docker exec uji sh -c 'psql -h /home/container/postgres/run -p "$(grep -o "^port = [0-9]*" /home/container/postgres/data/paket.conf | cut -d" " -f3)" -U postgres -lqt' | cut -d'|' -f1 | tr -d ' ' | grep -E '^(n8n|evolution|app)$' > /tmp/db.txt; cat /tmp/db.txt; [ "$(wc -l < /tmp/db.txt)" = 3 ]
+          # user "app" bisa login ke database app lewat TCP dengan sandinya
+          docker exec uji sh -c '. /home/container/.paket/rahasia.env; . /home/container/.paket/port.env; PGPASSWORD="$PG_APP_PASSWORD" psql -h 127.0.0.1 -p "$PG_PORT" -U app -d app -tAc "create table if not exists uji(x int); select current_user"'
           docker exec uji sh -c 'cat /home/container/postgres/data/paket.conf' | grep -q "listen_addresses = '127.0.0.1'"
-          docker exec uji sh -c 'ls -la /home/container; cat /home/container/kredensial.txt' | sed -E 's/(postgres \/ )[a-f0-9]+/\1***/; s/(API key global *: ).*/\1***/'
+          docker exec uji sh -c 'ls -la /home/container; cat /home/container/kredensial.txt' | sed -E 's/(postgres \/ )[a-f0-9]+/\1***/; s/(user app \/ )[a-f0-9]+/\1***/; s/(API key global *: ).*/\1***/'
           docker exec uji sh -c 'test "$(stat -c %a /home/container/kredensial.txt)" = 600'
 
       - name: Uji stop (^C) dan start ulang dengan data yang sama

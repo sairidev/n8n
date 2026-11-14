@@ -81,6 +81,7 @@ simpan_rahasia() { printf '%s=%s\n' "$1" "$2" >> "$R"; }
 [ -n "${PG_SUPER_PASSWORD:-}" ] || { PG_SUPER_PASSWORD=$(acak 40); simpan_rahasia PG_SUPER_PASSWORD "$PG_SUPER_PASSWORD"; }
 [ -n "${PG_N8N_PASSWORD:-}" ] || { PG_N8N_PASSWORD=$(acak 40); simpan_rahasia PG_N8N_PASSWORD "$PG_N8N_PASSWORD"; }
 [ -n "${PG_EVO_PASSWORD:-}" ] || { PG_EVO_PASSWORD=$(acak 40); simpan_rahasia PG_EVO_PASSWORD "$PG_EVO_PASSWORD"; }
+[ -n "${PG_APP_PASSWORD:-}" ] || { PG_APP_PASSWORD=$(acak 40); simpan_rahasia PG_APP_PASSWORD "$PG_APP_PASSWORD"; }
 [ -n "${EVO_KEY_OTOMATIS:-}" ] || { EVO_KEY_OTOMATIS=$(acak 32); simpan_rahasia EVO_KEY_OTOMATIS "$EVO_KEY_OTOMATIS"; }
 EVO_KEY="${EVOLUTION_API_KEY:-$EVO_KEY_OTOMATIS}"
 
@@ -234,7 +235,8 @@ fi
 pg_berhenti() { pg_ctl -D "$PGDATA" -m fast -w -t 90 -s stop 2>/dev/null; }
 
 PSQL="psql -X -q -v ON_ERROR_STOP=1 -h $PGRUN -p $PG_PORT -U postgres -d postgres"
-if ! $PSQL -v su="$PG_SUPER_PASSWORD" -v n8npw="$PG_N8N_PASSWORD" -v evopw="$PG_EVO_PASSWORD" > "$P/psql.log" 2>&1 <<'SQL'
+# database "app": siap dipakai workflow (node Postgres di n8n) dan aplikasi lain, terpisah dari database sistem
+if ! $PSQL -v su="$PG_SUPER_PASSWORD" -v n8npw="$PG_N8N_PASSWORD" -v evopw="$PG_EVO_PASSWORD" -v apppw="$PG_APP_PASSWORD" > "$P/psql.log" 2>&1 <<'SQL'
 SELECT format('ALTER ROLE postgres PASSWORD %L', :'su') \gexec
 SELECT format('CREATE ROLE n8n LOGIN PASSWORD %L', :'n8npw') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') \gexec
 SELECT format('ALTER ROLE n8n PASSWORD %L', :'n8npw') \gexec
@@ -242,6 +244,9 @@ SELECT format('CREATE ROLE evolution LOGIN PASSWORD %L', :'evopw') WHERE NOT EXI
 SELECT format('ALTER ROLE evolution PASSWORD %L', :'evopw') \gexec
 SELECT 'CREATE DATABASE n8n OWNER n8n' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'n8n') \gexec
 SELECT 'CREATE DATABASE evolution OWNER evolution' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'evolution') \gexec
+SELECT format('CREATE ROLE app LOGIN PASSWORD %L', :'apppw') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app') \gexec
+SELECT format('ALTER ROLE app PASSWORD %L', :'apppw') \gexec
+SELECT 'CREATE DATABASE app OWNER app' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'app') \gexec
 SQL
 then
     gagal "$(t 'Gagal menyiapkan user/database Postgres:' 'Failed to prepare Postgres users/databases:')"; tail -n 10 "$P/psql.log"
@@ -437,8 +442,9 @@ K="$H/kredensial.txt"
         echo "PostgreSQL"
         echo "  Dari n8n / server   : host 127.0.0.1, port ${PG_PORT}"
         [ -n "$PG_PUBLIK" ] && echo "  Dari luar           : host ${HOST_PUBLIK}, port ${PG_PUBLIK}"
-        echo "  User / sandi        : postgres / ${PG_SUPER_PASSWORD}"
-        echo "  Database            : buat sendiri untuk data kamu; database n8n dan evolution dipakai sistem"
+        echo "  Database data kamu  : app  (user app / ${PG_APP_PASSWORD})"
+        echo "  Admin (superuser)   : postgres / ${PG_SUPER_PASSWORD}"
+        echo "  Catatan             : database n8n dan evolution dipakai sistem, jangan diubah"
     else
         echo "# Regenerated on every server start. Do not share this file."
         echo
@@ -454,11 +460,14 @@ K="$H/kredensial.txt"
         echo "PostgreSQL"
         echo "  From n8n / server   : host 127.0.0.1, port ${PG_PORT}"
         [ -n "$PG_PUBLIK" ] && echo "  From outside        : host ${HOST_PUBLIK}, port ${PG_PUBLIK}"
-        echo "  User / password     : postgres / ${PG_SUPER_PASSWORD}"
-        echo "  Databases           : create your own; the n8n and evolution databases are used by the system"
+        echo "  Your data database  : app  (user app / ${PG_APP_PASSWORD})"
+        echo "  Admin (superuser)   : postgres / ${PG_SUPER_PASSWORD}"
+        echo "  Note                : the n8n and evolution databases are used by the system, do not change them"
     fi
 } > "$K"
 chmod 600 "$K"
+# alamat dalam untuk alat otomatis (tanpa rahasia)
+printf 'N8N_DALAM=%s\nEVO_DALAM=%s\nPG_PORT=%s\nPORT=%s\n' "$N8N_DALAM" "$EVO_DALAM" "$PG_PORT" "$PORT" > "$P/port.env"
 
 # ------------------------------------------------------------------ n8n (proses utama)
 export N8N_USER_FOLDER="$H"
