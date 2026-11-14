@@ -39,12 +39,15 @@ putar_log() { [ -f "$1" ] && [ "$(wc -c < "$1")" -gt 10485760 ] && mv -f "$1" "$
 angka() { case "$1" in ''|*[!0-9]*) return 1 ;; *) [ "$1" -ge 1 ] && [ "$1" -le 65535 ] ;; esac; }
 
 # ------------------------------------------------------------------ uid Wings harus punya nama (syarat Postgres)
+# Root filesystem Wings hanya-baca; /etc/passwd & /etc/group adalah tautan ke /tmp (tmpfs baru setiap start).
+[ -s /tmp/passwd ] || cp /etc/passwd.asli /tmp/passwd 2>/dev/null
+[ -s /tmp/group ] || cp /etc/group.asli /tmp/group 2>/dev/null
 uid=$(id -u); gid=$(id -g)
-if ! awk -F: -v u="$uid" '$3 == u { ada = 1 } END { exit !ada }' /etc/passwd 2>/dev/null; then
-    echo "container:x:${uid}:${gid}:container:${H}:/bin/sh" >> /etc/passwd 2>/dev/null
+if ! awk -F: -v u="$uid" '$3 == u { ada = 1 } END { exit !ada }' /tmp/passwd 2>/dev/null; then
+    echo "container:x:${uid}:${gid}:container:${H}:/bin/sh" >> /tmp/passwd || warn "$(t 'Tidak bisa menulis /tmp/passwd.' 'Cannot write /tmp/passwd.')"
 fi
-if ! awk -F: -v g="$gid" '$3 == g { ada = 1 } END { exit !ada }' /etc/group 2>/dev/null; then
-    echo "container:x:${gid}:" >> /etc/group 2>/dev/null
+if ! awk -F: -v g="$gid" '$3 == g { ada = 1 } END { exit !ada }' /tmp/group 2>/dev/null; then
+    echo "container:x:${gid}:" >> /tmp/group 2>/dev/null
 fi
 
 # ------------------------------------------------------------------ port

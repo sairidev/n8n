@@ -68,7 +68,8 @@ jobs:
           docker pull -q "$IMAGE"
           echo "ukuran image: $(docker image inspect "$IMAGE" --format '{{.Size}}' | awk '{printf "%.0f MB", $1/1048576}')"
           mkdir -p data && sudo chown 988:988 data
-          docker run -d --name uji --user 988:988 -v "$PWD/data:/home/container" \
+          # Seperti Wings: root filesystem hanya-baca, /tmp tmpfs, uid tanpa baris di /etc/passwd
+          docker run -d --name uji --user 988:988 --read-only --tmpfs /tmp:rw,exec,nosuid,size=100m -v "$PWD/data:/home/container" \
             -e STARTUP='paket-lengkap' -e SERVER_PORT=8123 -e SERVER_IP=127.0.0.1 -e SERVER_MEMORY=2048 \
             -e EVOLUTION_API_KEY=ujiKunciEvolution12345 -e N8N_SECURE_COOKIE=false -e CONSOLE_LANGUAGE=id \
             -p 8123:8123 "$IMAGE"
@@ -79,6 +80,7 @@ jobs:
             sleep 3
           done
           echo "::group::Log console"; docker logs uji 2>&1 | head -80; echo "::endgroup::"
+          if docker logs uji 2>&1 | grep -q 'Read-only file system'; then echo "masih ada tulisan ke root filesystem hanya-baca"; docker logs uji 2>&1 | grep 'Read-only file system'; exit 1; fi
           [ "$ready" = 1 ] || { echo "n8n tidak sampai 'Editor is now accessible'"; docker exec uji sh -c 'tail -n 30 /home/container/evolution/evolution.log; tail -n 30 /home/container/postgres/postgres.log' || true; exit 1; }
 
       - name: Uji layanan
@@ -138,7 +140,7 @@ jobs:
           set -e
           IMAGE="${{ steps.image.outputs.name }}:evo-sha-${GITHUB_SHA::7}"
           mkdir -p data2 && sudo chown 988:988 data2
-          docker run -d --name uji2 --user 988:988 -v "$PWD/data2:/home/container" \
+          docker run -d --name uji2 --user 988:988 --read-only --tmpfs /tmp:rw,exec,nosuid,size=100m -v "$PWD/data2:/home/container" \
             -e STARTUP='paket-lengkap' -e SERVER_PORT=8130 -e SERVER_IP=127.0.0.1 -e SERVER_MEMORY=2048 \
             -e EVOLUTION_PORT=8131 -e POSTGRES_PORT=8132 -e CONSOLE_LANGUAGE=en \
             -p 8130:8130 -p 8131:8131 -p 8132:8132 "$IMAGE"

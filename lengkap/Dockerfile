@@ -63,9 +63,12 @@ RUN apk add --no-cache \
         caddy ffmpeg openssl \
         git openssh-client graphicsmagick \
     && mkdir -p /home/container /run/postgresql \
-    # Postgres menolak jalan kalau uid-nya tidak ada di /etc/passwd. Uid Wings berbeda tiap node,
-    # jadi skrip start menambahkan barisnya sendiri (pola yang sama dengan OpenShift).
-    && chmod 666 /etc/passwd /etc/group
+    # Postgres menolak jalan kalau uid-nya tidak punya nama di /etc/passwd, dan uid Wings berbeda tiap node.
+    # Wings menjalankan container dengan root filesystem HANYA-BACA (hanya /tmp yang tmpfs dan bisa ditulis),
+    # jadi /etc/passwd & /etc/group ditautkan ke /tmp; skrip start mengisinya dari salinan asli + baris uid Wings.
+    && cp /etc/passwd /etc/passwd.asli && cp /etc/group /etc/group.asli \
+    && cp /etc/passwd /tmp/passwd && cp /etc/group /tmp/group && chmod 666 /tmp/passwd /tmp/group \
+    && ln -sf /tmp/passwd /etc/passwd && ln -sf /tmp/group /etc/group
 
 COPY --from=n8n /usr/local/lib/node_modules/n8n /usr/local/lib/node_modules/n8n
 RUN ln -s ../lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n && n8n --version
